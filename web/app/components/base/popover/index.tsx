@@ -1,14 +1,22 @@
 import { Popover, Transition } from '@headlessui/react'
 import { Fragment, cloneElement, useRef } from 'react'
-import s from './style.module.css'
+import cn from '@/utils/classnames'
+
+export type HtmlContentProps = {
+  onClose?: () => void
+  onClick?: () => void
+}
 
 type IPopover = {
   className?: string
-  htmlContent: React.ReactNode
+  htmlContent: React.ReactElement<HtmlContentProps>
+  popupClassName?: string
   trigger?: 'click' | 'hover'
-  position?: 'bottom' | 'br'
+  position?: 'bottom' | 'br' | 'bl'
   btnElement?: string | React.ReactNode
   btnClassName?: string | ((open: boolean) => string)
+  manualClose?: boolean
+  disabled?: boolean
 }
 
 const timeoutDuration = 100
@@ -17,9 +25,12 @@ export default function CustomPopover({
   trigger = 'hover',
   position = 'bottom',
   htmlContent,
+  popupClassName,
   btnElement,
   className,
   btnClassName,
+  manualClose,
+  disabled = false,
 }: IPopover) {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const timeOutRef = useRef<NodeJS.Timeout | null>(null)
@@ -46,47 +57,58 @@ export default function CustomPopover({
                 : {
                   onMouseLeave: () => onMouseLeave(open),
                   onMouseEnter: () => onMouseEnter(open),
-                })
-              }
+                })}
             >
               <Popover.Button
                 ref={buttonRef}
-                className={`group ${s.popupBtn} ${open ? '' : 'bg-gray-100'} ${!btnClassName ? '' : typeof btnClassName === 'string' ? btnClassName : btnClassName?.(open)}`}
+                disabled={disabled}
+                className={cn(
+                  'group inline-flex items-center bg-components-button-secondary-bg px-3 py-2 rounded-lg text-base border border-components-button-secondary-border font-medium hover:bg-components-button-secondary-bg-hover hover:border-components-button-secondary-border-hover focus:outline-none',
+                  open && 'bg-components-button-secondary-bg-hover border-components-button-secondary-border',
+                  (btnClassName && typeof btnClassName === 'string') && btnClassName,
+                  (btnClassName && typeof btnClassName !== 'string') && btnClassName?.(open),
+                )}
               >
                 {btnElement}
               </Popover.Button>
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-200"
-                enterFrom="opacity-0 translate-y-1"
-                enterTo="opacity-100 translate-y-0"
-                leave="transition ease-in duration-150"
-                leaveFrom="opacity-100 translate-y-0"
-                leaveTo="opacity-0 translate-y-1"
-              >
+              <Transition as={Fragment}>
                 <Popover.Panel
-                  className={`${s.popupPanel} ${position === 'br' ? 'right-0' : 'transform -translate-x-1/2 left-1/2'} ${className}`}
+                  className={cn(
+                    'absolute z-10 w-full max-w-sm px-4 mt-1 sm:px-0 lg:max-w-3xl',
+                    position === 'bottom' && '-translate-x-1/2 left-1/2',
+                    position === 'bl' && 'left-0',
+                    position === 'br' && 'right-0',
+                    className,
+                  )}
                   {...(trigger !== 'hover'
                     ? {}
                     : {
                       onMouseLeave: () => onMouseLeave(open),
                       onMouseEnter: () => onMouseEnter(open),
                     })
-                  }>
-                  <div
-                    className={s.panelContainer}
-                    {...(trigger !== 'hover'
-                      ? {}
-                      : {
-                        onMouseLeave: () => onMouseLeave(open),
-                        onMouseEnter: () => onMouseEnter(open),
-                      })
-                    }
-                  >
-                    {cloneElement(htmlContent as React.ReactElement, {
-                      onClose: () => onMouseLeave(open),
-                    })}
-                  </div>
+                  }
+                >
+                  {({ close }) => (
+                    <div
+                      className={cn('overflow-hidden bg-components-panel-bg w-fit min-w-[130px] rounded-lg shadow-lg ring-1 ring-black ring-opacity-5', popupClassName)}
+                      {...(trigger !== 'hover'
+                        ? {}
+                        : {
+                          onMouseLeave: () => onMouseLeave(open),
+                          onMouseEnter: () => onMouseEnter(open),
+                        })
+                      }
+                    >
+                      {cloneElement(htmlContent as React.ReactElement<HtmlContentProps>, {
+                        onClose: () => onMouseLeave(open),
+                        ...(manualClose
+                          ? {
+                            onClick: close,
+                          }
+                          : {}),
+                      })}
+                    </div>
+                  )}
                 </Popover.Panel>
               </Transition>
             </div>

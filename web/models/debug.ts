@@ -1,13 +1,58 @@
+import type { AgentStrategy, ModelModeType, RETRIEVE_TYPE, ToolItem, TtsAutoPlay } from '@/types/app'
+import type {
+  RerankingModeEnum,
+} from '@/models/datasets'
+import type { FileUpload } from '@/app/components/base/features/types'
 export type Inputs = Record<string, string | number | object>
+
+export enum PromptMode {
+  simple = 'simple',
+  advanced = 'advanced',
+}
+
+export type PromptItem = {
+  role?: PromptRole
+  text: string
+}
+
+export type ChatPromptConfig = {
+  prompt: PromptItem[]
+}
+
+export type ConversationHistoriesRole = {
+  user_prefix: string
+  assistant_prefix: string
+}
+export type CompletionPromptConfig = {
+  prompt: PromptItem
+  conversation_histories_role: ConversationHistoriesRole
+}
+
+export type BlockStatus = {
+  context: boolean
+  history: boolean
+  query: boolean
+}
+
+export enum PromptRole {
+  system = 'system',
+  user = 'user',
+  assistant = 'assistant',
+}
 
 export type PromptVariable = {
   key: string
   name: string
   type: string // "string" | "number" | "select",
   default?: string | number
-  required: boolean
+  required?: boolean
   options?: string[]
   max_length?: number
+  is_context_var?: boolean
+  enabled?: boolean
+  config?: Record<string, any>
+  icon?: string
+  icon_background?: string
 }
 
 export type CompletionParams = {
@@ -16,6 +61,7 @@ export type CompletionParams = {
   top_p: number
   presence_penalty: number
   frequency_penalty: number
+  stop?: string[]
 }
 
 export type ModelId = 'gpt-3.5-turbo' | 'text-davinci-003'
@@ -33,22 +79,97 @@ export type SuggestedQuestionsAfterAnswerConfig = MoreLikeThisConfig
 
 export type SpeechToTextConfig = MoreLikeThisConfig
 
+export type TextToSpeechConfig = {
+  enabled: boolean
+  voice?: string
+  language?: string
+  autoPlay?: TtsAutoPlay
+}
+
+export type CitationConfig = MoreLikeThisConfig
+
+export type AnnotationReplyConfig = {
+  id: string
+  enabled: boolean
+  score_threshold: number
+  embedding_model: {
+    embedding_provider_name: string
+    embedding_model_name: string
+  }
+}
+
+export type ModerationContentConfig = {
+  enabled: boolean
+  preset_response?: string
+}
+export type ModerationConfig = MoreLikeThisConfig & {
+  type?: string
+  config?: {
+    keywords?: string
+    api_based_extension_id?: string
+    inputs_config?: ModerationContentConfig
+    outputs_config?: ModerationContentConfig
+  } & Partial<Record<string, any>>
+}
+
+export type RetrieverResourceConfig = MoreLikeThisConfig
+export type AgentConfig = {
+  enabled: boolean
+  strategy: AgentStrategy
+  max_iteration: number
+  tools: ToolItem[]
+}
 // frontend use. Not the same as backend
 export type ModelConfig = {
   provider: string // LLM Provider: for example "OPENAI"
   model_id: string
+  mode: ModelModeType
   configs: PromptConfig
   opening_statement: string | null
-  more_like_this: {
-    enabled: boolean
-  } | null
-  suggested_questions_after_answer: {
-    enabled: boolean
-  } | null
-  speech_to_text: {
-    enabled: boolean
-  } | null
+  more_like_this: MoreLikeThisConfig | null
+  suggested_questions: string[] | null
+  suggested_questions_after_answer: SuggestedQuestionsAfterAnswerConfig | null
+  speech_to_text: SpeechToTextConfig | null
+  text_to_speech: TextToSpeechConfig | null
+  file_upload: FileUpload | null
+  retriever_resource: RetrieverResourceConfig | null
+  sensitive_word_avoidance: ModerationConfig | null
+  annotation_reply: AnnotationReplyConfig | null
   dataSets: any[]
+  agentConfig: AgentConfig
+}
+export type DatasetConfigItem = {
+  enable: boolean
+  value: number
+}
+
+export type DatasetConfigs = {
+  retrieval_model: RETRIEVE_TYPE
+  reranking_model: {
+    reranking_provider_name: string
+    reranking_model_name: string
+  }
+  top_k: number
+  score_threshold_enabled: boolean
+  score_threshold: number | null | undefined
+  datasets: {
+    datasets: {
+      enabled: boolean
+      id: string
+    }[]
+  }
+  reranking_mode?: RerankingModeEnum
+  weights?: {
+    vector_setting: {
+      vector_weight: number
+      embedding_provider_name: string
+      embedding_model_name: string
+    }
+    keyword_setting: {
+      keyword_weight: number
+    }
+  }
+  reranking_enable?: boolean
 }
 
 export type DebugRequestBody = {
@@ -98,7 +219,7 @@ export type LogSessionListResponse = {
     query: string // user's query question
     message: string // prompt send to LLM
     answer: string
-    creat_at: string
+    created_at: string
   }[]
   total: number
   page: number
@@ -107,7 +228,7 @@ export type LogSessionListResponse = {
 // log session detail and debug
 export type LogSessionDetailResponse = {
   id: string
-  cnversation_id: string
+  conversation_id: string
   model_provider: string
   query: string
   inputs: Record<string, string | number | object>[]

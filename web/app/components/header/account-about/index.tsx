@@ -1,13 +1,14 @@
 'use client'
 import { useTranslation } from 'react-i18next'
-import classNames from 'classnames'
 import Link from 'next/link'
+import dayjs from 'dayjs'
+import { RiCloseLine } from '@remixicon/react'
 import s from './index.module.css'
+import classNames from '@/utils/classnames'
 import Modal from '@/app/components/base/modal'
-import { XClose } from '@/app/components/base/icons/src/vender/line/general'
-import { Dify } from '@/app/components/base/icons/src/public/common'
 import type { LangGeniusVersionResponse } from '@/models/common'
 import { IS_CE_EDITION } from '@/config'
+import LogoSite from '@/app/components/base/logo/logo-site'
 
 type IAccountSettingProps = {
   langeniusVersionInfo: LangGeniusVersionResponse
@@ -30,26 +31,22 @@ export default function AccountAbout({
       onClose={() => { }}
       className={s.modal}
     >
-      <div className='relative'>
+      <div className='relative pt-4'>
         <div className='absolute -top-2 -right-4 flex justify-center items-center w-8 h-8 cursor-pointer' onClick={onCancel}>
-          <XClose className='w-4 h-4 text-gray-500' />
+          <RiCloseLine className='w-4 h-4 text-gray-500' />
         </div>
         <div>
-          <div className={classNames(
-            s['logo-icon'],
-            'mx-auto mb-3 w-12 h-12 bg-white rounded-xl border-[0.5px] border-gray-200',
-          )} />
-          <Dify className='mx-auto mb-2' />
+          <LogoSite className='mx-auto mb-2' />
           <div className='mb-3 text-center text-xs font-normal text-gray-500'>Version {langeniusVersionInfo?.current_version}</div>
           <div className='mb-4 text-center text-xs font-normal text-gray-700'>
-            <div>© 2023 LangGenius, Inc., Contributors.</div>
+            <div>© {dayjs().year()} LangGenius, Inc., Contributors.</div>
             <div className='text-[#1C64F2]'>
               {
                 IS_CE_EDITION
-                  ? <Link href={'https://github.com/langgenius/dify/blob/main/LICENSE'} target='_blank'>Open Source License</Link>
+                  ? <Link href={'https://github.com/langgenius/dify/blob/main/LICENSE'} target='_blank' rel='noopener noreferrer'>Open Source License</Link>
                   : <>
-                    <Link href={'https://docs.dify.ai/user-agreement/privacy-policy'} target='_blank'>Privacy Policy</Link>,
-                    <Link href={'https://docs.dify.ai/user-agreement/terms-of-service'} target='_blank'>Terms of Service</Link>
+                    <Link href='https://dify.ai/privacy' target='_blank' rel='noopener noreferrer'>Privacy Policy</Link>,<span> </span>
+                    <Link href='https://dify.ai/terms' target='_blank' rel='noopener noreferrer'>Terms of Service</Link>
                   </>
               }
             </div>
@@ -68,7 +65,7 @@ export default function AccountAbout({
             <Link
               className={classNames(buttonClassName, 'mr-2')}
               href={'https://github.com/langgenius/dify/releases'}
-              target='_blank'
+              target='_blank' rel='noopener noreferrer'
             >
               {t('common.about.changeLog')}
             </Link>
@@ -77,7 +74,7 @@ export default function AccountAbout({
                 <Link
                   className={classNames(buttonClassName, 'text-primary-600')}
                   href={langeniusVersionInfo.release_notes}
-                  target='_blank'
+                  target='_blank' rel='noopener noreferrer'
                 >
                   {t('common.about.updateNow')}
                 </Link>

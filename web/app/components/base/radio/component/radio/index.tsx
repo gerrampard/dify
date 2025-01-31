@@ -1,21 +1,23 @@
 import type { ReactElement } from 'react'
 import { useId } from 'react'
-import cn from 'classnames'
 import { useContext } from 'use-context-selector'
 import RadioGroupContext from '../../context'
 import s from '../../style.module.css'
+import cn from '@/utils/classnames'
 
 export type IRadioProps = {
   className?: string
+  labelClassName?: string
   children?: string | ReactElement
   checked?: boolean
   value?: string | number
   disabled?: boolean
-  onChange?: (e: any) => void
+  onChange?: (e?: IRadioProps['value']) => void
 }
 
 export default function Radio({
   className = '',
+  labelClassName,
   children = '',
   checked,
   value,
@@ -24,7 +26,7 @@ export default function Radio({
 }: IRadioProps): JSX.Element {
   const groupContext = useContext(RadioGroupContext)
   const labelId = useId()
-  const handleChange = (e: any) => {
+  const handleChange = (e: IRadioProps['value']) => {
     if (disabled)
       return
 
@@ -45,13 +47,13 @@ export default function Radio({
       isChecked ? 'bg-white shadow' : '',
       divClassName,
       className)}
-      onClick={() => handleChange(value)}
+    onClick={() => handleChange(value)}
     >
       {children && (
         <label className={
-          cn('text-sm cursor-pointer')
+          cn(labelClassName, 'text-sm cursor-pointer')
         }
-          id={labelId}
+        id={labelId}
         >
           {children}
         </label>

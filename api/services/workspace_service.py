@@ -1,49 +1,53 @@
+from flask_login import current_user  # type: ignore
+
+from configs import dify_config
 from extensions.ext_database import db
-from models.account import Tenant
-from models.provider import Provider, ProviderType, ProviderName
+from models.account import Tenant, TenantAccountJoin, TenantAccountJoinRole
+from services.account_service import TenantService
+from services.feature_service import FeatureService
 
 
 class WorkspaceService:
     @classmethod
     def get_tenant_info(cls, tenant: Tenant):
+        if not tenant:
+            return None
         tenant_info = {
-            'id': tenant.id,
-            'name': tenant.name,
-            'plan': tenant.plan,
-            'status': tenant.status,
-            'created_at': tenant.created_at,
-            'providers': [],
-            'in_trail': False,
-            'trial_end_reason': 'using_custom'
+            "id": tenant.id,
+            "name": tenant.name,
+            "plan": tenant.plan,
+            "status": tenant.status,
+            "created_at": tenant.created_at,
+            "in_trail": True,
+            "trial_end_reason": None,
+            "role": "normal",
         }
 
-        # Get providers
-        providers = db.session.query(Provider).filter(
-            Provider.tenant_id == tenant.id
-        ).all()
+        # Get role of user
+        tenant_account_join = (
+            db.session.query(TenantAccountJoin)
+            .filter(TenantAccountJoin.tenant_id == tenant.id, TenantAccountJoin.account_id == current_user.id)
+            .first()
+        )
+        assert tenant_account_join is not None, "TenantAccountJoin not found"
+        tenant_info["role"] = tenant_account_join.role
 
-        # Add providers to the tenant info
-        tenant_info['providers'] = providers
+        can_replace_logo = FeatureService.get_features(tenant_info["id"]).can_replace_logo
 
-        custom_provider = None
-        system_provider = None
+        if can_replace_logo and TenantService.has_roles(
+            tenant, [TenantAccountJoinRole.OWNER, TenantAccountJoinRole.ADMIN]
+        ):
+            base_url = dify_config.FILES_URL
+            replace_webapp_logo = (
+                f"{base_url}/files/workspaces/{tenant.id}/webapp-logo"
+                if tenant.custom_config_dict.get("replace_webapp_logo")
+                else None
+            )
+            remove_webapp_brand = tenant.custom_config_dict.get("remove_webapp_brand", False)
 
-        for provider in providers:
-            if provider.provider_type == ProviderType.CUSTOM.value:
-                if provider.is_valid and provider.encrypted_config:
-                    custom_provider = provider
-            elif provider.provider_type == ProviderType.SYSTEM.value:
-                if provider.provider_name == ProviderName.OPENAI.value and provider.is_valid:
-                    system_provider = provider
-
-        if system_provider and not custom_provider:
-            quota_used = system_provider.quota_used if system_provider.quota_used is not None else 0
-            quota_limit = system_provider.quota_limit if system_provider.quota_limit is not None else 0
-
-            if quota_used >= quota_limit:
-                tenant_info['trial_end_reason'] = 'trial_exceeded'
-            else:
-                tenant_info['in_trail'] = True
-                tenant_info['trial_end_reason'] = None
+            tenant_info["custom_config"] = {
+                "remove_webapp_brand": remove_webapp_brand,
+                "replace_webapp_logo": replace_webapp_logo,
+            }
 
         return tenant_info

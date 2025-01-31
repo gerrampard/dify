@@ -2,84 +2,137 @@
 import type { FC } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { useContext } from 'use-context-selector'
-import useSWR, { useSWRConfig } from 'swr'
+import { useContext, useContextSelector } from 'use-context-selector'
 import AppCard from '@/app/components/app/overview/appCard'
 import Loading from '@/app/components/base/loading'
 import { ToastContext } from '@/app/components/base/toast'
-import { fetchAppDetail, updateAppApiStatus, updateAppSiteAccessToken, updateAppSiteConfig, updateAppSiteStatus } from '@/service/apps'
-import type { IToastProps } from '@/app/components/base/toast'
-import type { App } from '@/types/app'
+import {
+  fetchAppDetail,
+  fetchAppSSO,
+  updateAppSSO,
+  updateAppSiteAccessToken,
+  updateAppSiteConfig,
+  updateAppSiteStatus,
+} from '@/service/apps'
+import type { App, AppSSO } from '@/types/app'
+import type { UpdateAppSiteCodeResponse } from '@/models/app'
+import { asyncRunSafe } from '@/utils'
+import { NEED_REFRESH_APP_LIST_KEY } from '@/config'
+import type { IAppCardProps } from '@/app/components/app/overview/appCard'
+import { useStore as useAppStore } from '@/app/components/app/store'
+import AppContext from '@/context/app-context'
 
 export type ICardViewProps = {
   appId: string
 }
 
-type IParams = {
-  url: string
-  body?: Record<string, any>
-}
-
-export async function asyncRunSafe<T>(func: (val: IParams) => Promise<T>, params: IParams, callback: (props: IToastProps) => void, dict?: any): Promise<[string?, T?]> {
-  try {
-    const res = await func(params)
-    callback && callback({ type: 'success', message: dict('common.actionMsg.modifiedSuccessfully') })
-    return [undefined, res]
-  }
-  catch (err) {
-    callback && callback({ type: 'error', message: dict('common.actionMsg.modificationFailed') })
-    return [(err as Error).message, undefined]
-  }
-}
-
 const CardView: FC<ICardViewProps> = ({ appId }) => {
-  const detailParams = { url: '/apps', id: appId }
-  const { data: response } = useSWR(detailParams, fetchAppDetail)
-  const { mutate } = useSWRConfig()
-  const { notify } = useContext(ToastContext)
   const { t } = useTranslation()
+  const { notify } = useContext(ToastContext)
+  const appDetail = useAppStore(state => state.appDetail)
+  const setAppDetail = useAppStore(state => state.setAppDetail)
+  const systemFeatures = useContextSelector(AppContext, state => state.systemFeatures)
 
-  if (!response)
-    return <Loading />
+  const updateAppDetail = async () => {
+    try {
+      const res = await fetchAppDetail({ url: '/apps', id: appId })
+      if (systemFeatures.enable_web_sso_switch_component) {
+        const ssoRes = await fetchAppSSO({ appId })
+        setAppDetail({ ...res, enable_sso: ssoRes.enabled })
+      }
+      else {
+        setAppDetail({ ...res })
+      }
+    }
+    catch (error) { console.error(error) }
+  }
+
+  const handleCallbackResult = (err: Error | null, message?: string) => {
+    const type = err ? 'error' : 'success'
+
+    message ||= (type === 'success' ? 'modifiedSuccessfully' : 'modifiedUnsuccessfully')
+
+    if (type === 'success')
+      updateAppDetail()
+
+    notify({
+      type,
+      message: t(`common.actionMsg.${message}`),
+    })
+  }
 
   const onChangeSiteStatus = async (value: boolean) => {
-    const [err] = await asyncRunSafe<App>(updateAppSiteStatus as any, { url: `/apps/${appId}/site-enable`, body: { enable_site: value } }, notify, t)
-    if (!err)
-      mutate(detailParams)
+    const [err] = await asyncRunSafe<App>(
+      updateAppSiteStatus({
+        url: `/apps/${appId}/site-enable`,
+        body: { enable_site: value },
+      }) as Promise<App>,
+    )
+
+    handleCallbackResult(err)
   }
 
   const onChangeApiStatus = async (value: boolean) => {
-    const [err] = await asyncRunSafe<App>(updateAppApiStatus as any, { url: `/apps/${appId}/api-enable`, body: { enable_api: value } }, notify, t)
-    if (!err)
-      mutate(detailParams)
+    const [err] = await asyncRunSafe<App>(
+      updateAppSiteStatus({
+        url: `/apps/${appId}/api-enable`,
+        body: { enable_api: value },
+      }) as Promise<App>,
+    )
+
+    handleCallbackResult(err)
   }
 
-  const onSaveSiteConfig = async (params: any) => {
-    const [err] = await asyncRunSafe<App>(updateAppSiteConfig as any, { url: `/apps/${appId}/site`, body: params }, notify, t)
+  const onSaveSiteConfig: IAppCardProps['onSaveSiteConfig'] = async (params) => {
+    const [err] = await asyncRunSafe<App>(
+      updateAppSiteConfig({
+        url: `/apps/${appId}/site`,
+        body: params,
+      }) as Promise<App>,
+    )
     if (!err)
-      mutate(detailParams)
+      localStorage.setItem(NEED_REFRESH_APP_LIST_KEY, '1')
+
+    if (systemFeatures.enable_web_sso_switch_component) {
+      const [sso_err] = await asyncRunSafe<AppSSO>(
+        updateAppSSO({ id: appId, enabled: Boolean(params.enable_sso) }) as Promise<AppSSO>,
+      )
+      if (sso_err) {
+        handleCallbackResult(sso_err)
+        return
+      }
+    }
+
+    handleCallbackResult(err)
   }
 
   const onGenerateCode = async () => {
-    const [err] = await asyncRunSafe<App>(updateAppSiteAccessToken as any, { url: `/apps/${appId}/site/access-token-reset` }, notify, t)
-    if (!err)
-      mutate(detailParams)
+    const [err] = await asyncRunSafe<UpdateAppSiteCodeResponse>(
+      updateAppSiteAccessToken({
+        url: `/apps/${appId}/site/access-token-reset`,
+      }) as Promise<UpdateAppSiteCodeResponse>,
+    )
+
+    handleCallbackResult(err, err ? 'generatedUnsuccessfully' : 'generatedSuccessfully')
   }
 
+  if (!appDetail)
+    return <Loading />
+
   return (
-    <div className='flex flex-row justify-between w-full mb-6'>
+    <div className="grid gap-6 grid-cols-1 xl:grid-cols-2 w-full mb-6">
       <AppCard
-        className='mr-3 flex-1'
-        appInfo={response}
-        cardType='webapp'
+        appInfo={appDetail}
+        cardType="webapp"
         onChangeStatus={onChangeSiteStatus}
         onGenerateCode={onGenerateCode}
-        onSaveSiteConfig={onSaveSiteConfig} />
+        onSaveSiteConfig={onSaveSiteConfig}
+      />
       <AppCard
-        className='ml-3 flex-1'
-        cardType='api'
-        appInfo={response}
-        onChangeStatus={onChangeApiStatus} />
+        cardType="api"
+        appInfo={appDetail}
+        onChangeStatus={onChangeApiStatus}
+      />
     </div>
   )
 }

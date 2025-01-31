@@ -1,3 +1,5 @@
+'use client'
+import React, { useEffect, useState } from 'react'
 import { Github } from '@/app/components/base/icons/src/public/common'
 import type { GithubRepo } from '@/models/common'
 
@@ -10,23 +12,31 @@ const getStar = async () => {
   return res.json()
 }
 
-const GithubStar = async () => {
-  let githubRepo: GithubRepo = { stargazers_count: 0 }
+const GithubStar = () => {
+  const [githubRepo, setGithubRepo] = useState<GithubRepo>({ stargazers_count: 6000 })
+  const [isFetched, setIsFetched] = useState(false)
+  useEffect(() => {
+    (async () => {
+      try {
+        if (process.env.NODE_ENV === 'development')
+          return
 
-  if (process.env.NODE_ENV === 'development')
-    return null
+        await setGithubRepo(await getStar())
+        setIsFetched(true)
+      }
+      catch (e) {
 
-  try {
-    githubRepo = await getStar()
-  }
-  catch (e) {
+      }
+    })()
+  }, [])
+
+  if (!isFetched)
     return null
-  }
 
   return (
     <a
       href='https://github.com/langgenius/dify'
-      target='_blank'
+      target='_blank' rel='noopener noreferrer'
       className='flex items-center leading-[18px] border border-gray-200 rounded-md text-xs text-gray-700 font-semibold overflow-hidden'>
       <div className='flex items-center px-2 py-1 bg-gray-100'>
         <Github className='mr-1 w-[18px] h-[18px]' />

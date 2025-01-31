@@ -3,15 +3,22 @@ import type { FC } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContext } from 'use-context-selector'
-import { useBoolean } from 'ahooks'
-import { isEqual } from 'lodash-es'
 import produce from 'immer'
+import { useFormattingChangedDispatcher } from '../debug/hooks'
 import FeaturePanel from '../base/feature-panel'
 import OperationBtn from '../base/operation-btn'
-import CardItem from './card-item'
-import SelectDataSet from './select-dataset'
+import CardItem from './card-item/item'
+import ParamsConfig from './params-config'
+import ContextVar from './context-var'
 import ConfigContext from '@/context/debug-configuration'
+import { AppType } from '@/types/app'
 import type { DataSet } from '@/models/datasets'
+import {
+  getMultipleRetrievalConfig,
+  getSelectedDatasetsMode,
+} from '@/app/components/workflow/nodes/knowledge-retrieval/utils'
+import { useModelListAndDefaultModelAndCurrentProviderAndModel } from '@/app/components/header/account-setting/model-provider-page/hooks'
+import { ModelTypeEnum } from '@/app/components/header/account-setting/model-provider-page/declarations'
 
 const Icon = (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -23,74 +30,119 @@ const Icon = (
 const DatasetConfig: FC = () => {
   const { t } = useTranslation()
   const {
+    mode,
     dataSets: dataSet,
     setDataSets: setDataSet,
-    setFormattingChanged,
+    modelConfig,
+    setModelConfig,
+    showSelectDataSet,
+    isAgent,
+    datasetConfigs,
+    setDatasetConfigs,
+    setRerankSettingModalOpen,
   } = useContext(ConfigContext)
-  const selectedIds = dataSet.map(item => item.id)
+  const formattingChangedDispatcher = useFormattingChangedDispatcher()
 
   const hasData = dataSet.length > 0
-  const [isShowSelectDataSet, { setTrue: showSelectDataSet, setFalse: hideSelectDataSet }] = useBoolean(false)
-  const handleSelect = (data: DataSet[]) => {
-    if (isEqual(data.map(item => item.id), dataSet.map(item => item.id))) {
-      hideSelectDataSet()
-      return
-    }
 
-    setFormattingChanged(true)
-    if (data.find(item => !item.name)) { // has not loaded selected dataset
-      const newSelected = produce(data, (draft) => {
-        data.forEach((item, index) => {
-          if (!item.name) { // not fetched database
-            const newItem = dataSet.find(i => i.id === item.id)
-            if (newItem)
-              draft[index] = newItem
-          }
+  const {
+    currentModel: currentRerankModel,
+    currentProvider: currentRerankProvider,
+  } = useModelListAndDefaultModelAndCurrentProviderAndModel(ModelTypeEnum.rerank)
+
+  const onRemove = (id: string) => {
+    const filteredDataSets = dataSet.filter(item => item.id !== id)
+    setDataSet(filteredDataSets)
+    const retrievalConfig = getMultipleRetrievalConfig(datasetConfigs as any, filteredDataSets, dataSet, {
+      provider: currentRerankProvider?.provider,
+      model: currentRerankModel?.model,
+    })
+    setDatasetConfigs({
+      ...(datasetConfigs as any),
+      ...retrievalConfig,
+    })
+    const {
+      allExternal,
+      allInternal,
+      mixtureInternalAndExternal,
+      mixtureHighQualityAndEconomic,
+      inconsistentEmbeddingModel,
+    } = getSelectedDatasetsMode(filteredDataSets)
+
+    if (
+      (allInternal && (mixtureHighQualityAndEconomic || inconsistentEmbeddingModel))
+      || mixtureInternalAndExternal
+      || allExternal
+    )
+      setRerankSettingModalOpen(true)
+    formattingChangedDispatcher()
+  }
+
+  const handleSave = (newDataset: DataSet) => {
+    const index = dataSet.findIndex(item => item.id === newDataset.id)
+
+    const newDatasets = [...dataSet.slice(0, index), newDataset, ...dataSet.slice(index + 1)]
+    setDataSet(newDatasets)
+    formattingChangedDispatcher()
+  }
+
+  const promptVariables = modelConfig.configs.prompt_variables
+  const promptVariablesToSelect = promptVariables.map(item => ({
+    name: item.name,
+    type: item.type,
+    value: item.key,
+  }))
+  const selectedContextVar = promptVariables?.find(item => item.is_context_var)
+  const handleSelectContextVar = (selectedValue: string) => {
+    const newModelConfig = produce(modelConfig, (draft) => {
+      draft.configs.prompt_variables = modelConfig.configs.prompt_variables.map((item) => {
+        return ({
+          ...item,
+          is_context_var: item.key === selectedValue,
         })
       })
-      setDataSet(newSelected)
-    }
-    else {
-      setDataSet(data)
-    }
-    hideSelectDataSet()
-  }
-  const onRemove = (id: string) => {
-    setDataSet(dataSet.filter(item => item.id !== id))
-    setFormattingChanged(true)
+    })
+    setModelConfig(newModelConfig)
   }
 
   return (
     <FeaturePanel
-      className='mt-3'
+      className='mt-2'
       headerIcon={Icon}
       title={t('appDebug.feature.dataSet.title')}
-      headerRight={<OperationBtn type="add" onClick={showSelectDataSet} />}
+      headerRight={
+        <div className='flex items-center gap-1'>
+          {!isAgent && <ParamsConfig disabled={!hasData} selectedDatasets={dataSet} />}
+          <OperationBtn type="add" onClick={showSelectDataSet} />
+        </div>
+      }
       hasHeaderBottomBorder={!hasData}
+      noBodySpacing
     >
       {hasData
         ? (
-          <div className='flex flex-wrap justify-between'>
+          <div className='flex flex-wrap mt-1 px-3 pb-3 justify-between'>
             {dataSet.map(item => (
               <CardItem
-                className="mb-2"
                 key={item.id}
                 config={item}
                 onRemove={onRemove}
+                onSave={handleSave}
               />
             ))}
           </div>
         )
         : (
-          <div className='pt-2 pb-1 text-xs text-gray-500'>{t('appDebug.feature.dataSet.noData')}</div>
+          <div className='mt-1 px-3 pb-3'>
+            <div className='pt-2 pb-1 text-xs text-gray-500'>{t('appDebug.feature.dataSet.noData')}</div>
+          </div>
         )}
 
-      {isShowSelectDataSet && (
-        <SelectDataSet
-          isShow={isShowSelectDataSet}
-          onClose={hideSelectDataSet}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
+      {mode === AppType.completion && dataSet.length > 0 && (
+        <ContextVar
+          value={selectedContextVar?.key}
+          options={promptVariablesToSelect}
+          onChange={handleSelectContextVar}
         />
       )}
     </FeaturePanel>

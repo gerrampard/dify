@@ -6,12 +6,13 @@ import type { EChartsOption } from 'echarts'
 import useSWR from 'swr'
 import dayjs from 'dayjs'
 import { get } from 'lodash-es'
+import Decimal from 'decimal.js'
 import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/utils/format'
 import Basic from '@/app/components/app-sidebar/basic'
 import Loading from '@/app/components/base/loading'
-import type { AppDailyConversationsResponse, AppDailyEndUsersResponse, AppTokenCostsResponse } from '@/models/app'
-import { getAppDailyConversations, getAppDailyEndUsers, getAppStatistics, getAppTokenCosts } from '@/service/apps'
+import type { AppDailyConversationsResponse, AppDailyEndUsersResponse, AppDailyMessagesResponse, AppTokenCostsResponse } from '@/models/app'
+import { getAppDailyConversations, getAppDailyEndUsers, getAppDailyMessages, getAppStatistics, getAppTokenCosts, getWorkflowDailyConversations } from '@/service/apps'
 const valueFormatter = (v: string | number) => v
 
 const COLOR_TYPE_MAP = {
@@ -36,12 +37,15 @@ const COMMON_COLOR_MAP = {
 }
 
 type IColorType = 'green' | 'orange' | 'blue'
-type IChartType = 'conversations' | 'endUsers' | 'costs'
+type IChartType = 'messages' | 'conversations' | 'endUsers' | 'costs' | 'workflowCosts'
 type IChartConfigType = { colorType: IColorType; showTokens?: boolean }
 
 const commonDateFormat = 'MMM D, YYYY'
 
 const CHART_TYPE_CONFIG: Record<string, IChartConfigType> = {
+  messages: {
+    colorType: 'green',
+  },
   conversations: {
     colorType: 'green',
   },
@@ -52,12 +56,13 @@ const CHART_TYPE_CONFIG: Record<string, IChartConfigType> = {
     colorType: 'blue',
     showTokens: true,
   },
+  workflowCosts: {
+    colorType: 'blue',
+  },
 }
 
-const sum = (arr: number[]): number => {
-  return arr.reduce((acr, cur) => {
-    return acr + cur
-  })
+const sum = (arr: Decimal.Value[]): number => {
+  return Decimal.sum(...arr).toNumber()
 }
 
 const defaultPeriod = {
@@ -86,7 +91,7 @@ export type IChartProps = {
   unit?: string
   yMax?: number
   chartType: IChartType
-  chartData: AppDailyConversationsResponse | AppDailyEndUsersResponse | AppTokenCostsResponse | { data: Array<{ date: string; count: number }> }
+  chartData: AppDailyMessagesResponse | AppDailyConversationsResponse | AppDailyEndUsersResponse | AppTokenCostsResponse | { data: Array<{ date: string; count: number }> }
 }
 
 const Chart: React.FC<IChartProps> = ({
@@ -225,12 +230,13 @@ const Chart: React.FC<IChartProps> = ({
   const sumData = isAvg ? (sum(yData) / yData.length) : sum(yData)
 
   return (
-    <div className={`flex flex-col w-full px-6 py-4 border-[0.5px] rounded-lg border-gray-200 shadow-sm ${className ?? ''}`}>
+    <div className={`flex flex-col w-full px-6 py-4 border-[0.5px] rounded-lg border-gray-200 shadow-xs ${className ?? ''}`}>
       <div className='mb-3'>
         <Basic name={title} type={timePeriod} hoverTip={explanation} />
       </div>
-      <div className='mb-4'>
+      <div className='mb-4 flex-1'>
         <Basic
+          isExtraInLine={CHART_TYPE_CONFIG[chartType].showTokens}
           name={chartType !== 'costs' ? (sumData.toLocaleString() + unit) : `${sumData < 1000 ? sumData : (`${formatNumber(Math.round(sumData / 1000))}k`)}`}
           type={!CHART_TYPE_CONFIG[chartType].showTokens
             ? ''
@@ -254,6 +260,20 @@ const getDefaultChartData = ({ start, end, key = 'count' }: { start: string; end
   })
 }
 
+export const MessagesChart: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+  const { data: response } = useSWR({ url: `/apps/${id}/statistics/daily-messages`, params: period.query }, getAppDailyMessages)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.totalMessages.title'), explanation: t('appOverview.analysis.totalMessages.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData(period.query ?? defaultPeriod) }}
+    chartType='messages'
+    {...(noDataFlag && { yMax: 500 })}
+  />
+}
+
 export const ConversationsChart: FC<IBizChartProps> = ({ id, period }) => {
   const { t } = useTranslation()
   const { data: response } = useSWR({ url: `/apps/${id}/statistics/daily-conversations`, params: period.query }, getAppDailyConversations)
@@ -261,7 +281,7 @@ export const ConversationsChart: FC<IBizChartProps> = ({ id, period }) => {
     return <Loading />
   const noDataFlag = !response.data || response.data.length === 0
   return <Chart
-    basicInfo={{ title: t('appOverview.analysis.totalMessages.title'), explanation: t('appOverview.analysis.totalMessages.explanation'), timePeriod: period.name }}
+    basicInfo={{ title: t('appOverview.analysis.totalConversations.title'), explanation: t('appOverview.analysis.totalConversations.explanation'), timePeriod: period.name }}
     chartData={!noDataFlag ? response : { data: getDefaultChartData(period.query ?? defaultPeriod) }}
     chartType='conversations'
     {...(noDataFlag && { yMax: 500 })}
@@ -316,6 +336,23 @@ export const AvgResponseTime: FC<IBizChartProps> = ({ id, period }) => {
   />
 }
 
+export const TokenPerSecond: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+  const { data: response } = useSWR({ url: `/apps/${id}/statistics/tokens-per-second`, params: period.query }, getAppStatistics)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.tps.title'), explanation: t('appOverview.analysis.tps.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData({ ...(period.query ?? defaultPeriod), key: 'tps' }) } as any}
+    valueKey='tps'
+    chartType='conversations'
+    isAvg
+    unit={t('appOverview.analysis.tokenPS') as string}
+    {...(noDataFlag && { yMax: 100 })}
+  />
+}
+
 export const UserSatisfactionRate: FC<IBizChartProps> = ({ id, period }) => {
   const { t } = useTranslation()
   const { data: response } = useSWR({ url: `/apps/${id}/statistics/user-satisfaction-rate`, params: period.query }, getAppStatistics)
@@ -329,6 +366,7 @@ export const UserSatisfactionRate: FC<IBizChartProps> = ({ id, period }) => {
     chartType='endUsers'
     isAvg
     {...(noDataFlag && { yMax: 1000 })}
+    className='h-full'
   />
 }
 
@@ -344,6 +382,67 @@ export const CostChart: FC<IBizChartProps> = ({ id, period }) => {
     chartData={!noDataFlag ? response : { data: getDefaultChartData(period.query ?? defaultPeriod) }}
     chartType='costs'
     {...(noDataFlag && { yMax: 100 })}
+  />
+}
+
+export const WorkflowMessagesChart: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+  const { data: response } = useSWR({ url: `/apps/${id}/workflow/statistics/daily-conversations`, params: period.query }, getWorkflowDailyConversations)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.totalMessages.title'), explanation: t('appOverview.analysis.totalMessages.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData({ ...(period.query ?? defaultPeriod), key: 'runs' }) }}
+    chartType='conversations'
+    valueKey='runs'
+    {...(noDataFlag && { yMax: 500 })}
+  />
+}
+
+export const WorkflowDailyTerminalsChart: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+
+  const { data: response } = useSWR({ url: `/apps/${id}/workflow/statistics/daily-terminals`, id, params: period.query }, getAppDailyEndUsers)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.activeUsers.title'), explanation: t('appOverview.analysis.activeUsers.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData(period.query ?? defaultPeriod) }}
+    chartType='endUsers'
+    {...(noDataFlag && { yMax: 500 })}
+  />
+}
+
+export const WorkflowCostChart: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+
+  const { data: response } = useSWR({ url: `/apps/${id}/workflow/statistics/token-costs`, params: period.query }, getAppTokenCosts)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.tokenUsage.title'), explanation: t('appOverview.analysis.tokenUsage.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData(period.query ?? defaultPeriod) }}
+    chartType='workflowCosts'
+    {...(noDataFlag && { yMax: 100 })}
+  />
+}
+
+export const AvgUserInteractions: FC<IBizChartProps> = ({ id, period }) => {
+  const { t } = useTranslation()
+  const { data: response } = useSWR({ url: `/apps/${id}/workflow/statistics/average-app-interactions`, params: period.query }, getAppStatistics)
+  if (!response)
+    return <Loading />
+  const noDataFlag = !response.data || response.data.length === 0
+  return <Chart
+    basicInfo={{ title: t('appOverview.analysis.avgUserInteractions.title'), explanation: t('appOverview.analysis.avgUserInteractions.explanation'), timePeriod: period.name }}
+    chartData={!noDataFlag ? response : { data: getDefaultChartData({ ...(period.query ?? defaultPeriod), key: 'interactions' }) } as any}
+    chartType='conversations'
+    valueKey='interactions'
+    isAvg
+    {...(noDataFlag && { yMax: 500 })}
   />
 }
 

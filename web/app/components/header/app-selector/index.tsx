@@ -6,8 +6,9 @@ import { Menu, Transition } from '@headlessui/react'
 import { useRouter } from 'next/navigation'
 import Indicator from '../indicator'
 import type { AppDetailResponse } from '@/models/app'
-import NewAppDialog from '@/app/(commonLayout)/apps/NewAppDialog'
+import CreateAppDialog from '@/app/components/app/create-app-dialog'
 import AppIcon from '@/app/components/base/app-icon'
+import { useAppContext } from '@/context/app-context'
 
 type IAppSelectorProps = {
   appItems: AppDetailResponse[]
@@ -16,6 +17,7 @@ type IAppSelectorProps = {
 
 export default function AppSelector({ appItems, curApp }: IAppSelectorProps) {
   const router = useRouter()
+  const { isCurrentWorkspaceEditor } = useAppContext()
   const [showNewAppDialog, setShowNewAppDialog] = useState(false)
   const { t } = useTranslation()
 
@@ -55,7 +57,7 @@ export default function AppSelector({ appItems, curApp }: IAppSelectorProps) {
             className="
               absolute -left-11 right-0 mt-1.5 w-60 max-w-80
               divide-y divide-gray-100 origin-top-right rounded-lg bg-white
-              shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_rgba(0,0,0,0.05)]
+              shadow-lg
             "
           >
             {!!appItems.length && (<div className="px-1 py-1 overflow-auto" style={{ maxHeight: '50vh' }}>
@@ -63,7 +65,7 @@ export default function AppSelector({ appItems, curApp }: IAppSelectorProps) {
                 appItems.map((app: AppDetailResponse) => (
                   <Menu.Item key={app.id}>
                     <div className={itemClassName} onClick={() =>
-                      router.push(`/app/${app.id}/overview`)
+                      router.push(`/app/${app.id}/${isCurrentWorkspaceEditor ? 'configuration' : 'overview'}`)
                     }>
                       <div className='relative w-6 h-6 mr-2 bg-[#D5F5F6] rounded-[6px]'>
                         <AppIcon size='tiny' />
@@ -77,7 +79,7 @@ export default function AppSelector({ appItems, curApp }: IAppSelectorProps) {
                 ))
               }
             </div>)}
-            <Menu.Item>
+            {isCurrentWorkspaceEditor && <Menu.Item>
               <div className='p-1' onClick={() => setShowNewAppDialog(true)}>
                 <div
                   className='flex items-center h-12 rounded-lg cursor-pointer hover:bg-gray-100'
@@ -95,10 +97,15 @@ export default function AppSelector({ appItems, curApp }: IAppSelectorProps) {
                 </div>
               </div>
             </Menu.Item>
+            }
           </Menu.Items>
         </Transition>
       </Menu>
-      <NewAppDialog show={showNewAppDialog} onClose={() => setShowNewAppDialog(false)} />
+      <CreateAppDialog
+        show={showNewAppDialog}
+        onClose={() => setShowNewAppDialog(false)}
+        onSuccess={() => {}}
+      />
     </div>
   )
 }
